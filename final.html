@@ -1,0 +1,714 @@
+<!DOCTYPE html>
+<head>
+<title>Final Project</title>
+<script src="https://csc-vu.github.io/lib/three.js"></script>
+<script src="https://csc-vu.github.io/lib/OrbitControls.js"></script>
+<script src="https://csc-vu.github.io/lib/KeyboardState.js"></script>
+
+<script>
+
+    var scene, camera, renderer; // Three.js rendering basics
+    var canvas; // The canvas on which the image is rendered
+
+    //Clock Variables
+    var clock = new THREE.Clock();
+    var startTime = clock.getElapsedTime();
+
+    //Keyboard
+    var keyboard = new KeyboardState();
+
+    //Parts of Mile's Body
+    var spiderman;
+    var milesBody, milesHead;
+    var leftThigh, rightThigh, leftCalf, rightCalf;
+    var leftUpperArm, rightUpperArm, leftLowerArm, rightLowerArm;
+
+    //Four Parts of the web
+    var web1, web2, web3, web4; //web 1 attaches to the arm and web 2 to web 1 and so on.
+
+    //Environment
+    var ground;
+    var texLoader; //Texture loader
+    /*
+    const size = 1020;
+    const divisions = 34;
+    const gridHelper = new THREE.GridHelper(size, divisions, 0xffffff, 0xffffff);
+    */
+
+    //tree environment
+    var tree;
+    var treeTrunk, treeTop;
+
+
+    /* Creating Miles' Body using Hieirachical Modeling*/
+    function createHead(radius){
+        var head = new THREE.Object3D();
+        
+        // SphereGeometry(radius, horizSeg, vertSeg, horizStartAng, horizLenAngle, vertStartAng, vertLenAng )
+        var geometry = new THREE.SphereGeometry( radius, 100, 100, 0, 2*Math.PI, 0, 2*Math.PI);
+        var material = new THREE.MeshPhongMaterial({color: 0x000000});
+        var head = new THREE.Mesh( geometry, material );
+        head.position.y += radius;
+
+        return head;
+    }
+
+    function createBody(width, length, depth){
+        var cubeGeom = new THREE.BoxGeometry(1,1,1); 
+        var cubeMat = new THREE.MeshPhongMaterial({color: 0xFF0000});
+        var cubeMesh = new THREE.Mesh(cubeGeom, cubeMat);
+        
+        cubeMesh.scale.set(width, length, depth);
+        cubeMesh.position.y += length/2;
+        var body = new THREE.Object3D();
+        body.add(cubeMesh);
+        return body;
+    }
+
+    function createArm(width, length, depth){
+        var armGeom = new THREE.BoxGeometry(1,1,1); 
+        var armMat = new THREE.MeshPhongMaterial({color: 0x000000});
+        var armMesh = new THREE.Mesh(armGeom, armMat);
+        
+        armMesh.scale.set(width, length, depth);
+        armMesh.position.y -= length/2;
+        armMesh.rotation.z += Math.PI;
+        var arm = new THREE.Object3D();
+        arm.add(armMesh);
+        return arm;
+    }
+
+    function createLeg(width, length, depth){
+        var legGeom = new THREE.BoxGeometry(1,1,1); 
+        var legMat = new THREE.MeshPhongMaterial({color: 0x000000});
+        var legMesh = new THREE.Mesh(legGeom, legMat);
+        
+        legMesh.scale.set(width, length, depth);
+        legMesh.position.y -= length/2;
+        var leg = new THREE.Object3D();
+        leg.add(legMesh);
+        return leg;
+    }
+
+    //Final Body and our container for everything
+    function createSpiderman(){
+        //Parameter Values
+        var headRadius = 1;
+        var bodyX = 2.1;
+        var bodyY = 4;
+        var bodyZ = 1;
+        var limbX = 1; 
+        var limbY = 2;
+        var limbZ = 1;
+
+        //Build Body Parts
+        milesHead = createHead(headRadius);
+        milesBody = createBody(bodyX,bodyY,bodyZ);
+        leftThigh = createLeg(limbX,limbY,limbZ);
+        rightThigh = createLeg(limbX,limbY,limbZ);
+        leftCalf = createLeg(limbX,limbY,limbZ);
+        rightCalf = createLeg(limbX,limbY,limbZ);
+        leftUpperArm = createArm(limbX,limbY,limbZ);
+        rightUpperArm = createArm(limbX,limbY,limbZ);
+        leftLowerArm = createArm(limbX,limbY,limbZ);
+        rightLowerArm = createArm(limbX,limbY,limbZ);
+        web1 = createWeb(0.1, 100, 0);
+        web2 = createWeb(0.1, 100, Math.PI/6);
+        web3 = createWeb(0.1, 100, Math.PI/3);
+        web4 = createWeb(0.1, 100, Math.PI/2);
+
+        
+        //Build Body Hierarchical structure
+        var spiderman = new THREE.Object3D();
+        spiderman.add(milesBody);
+        milesBody.add(milesHead);
+        milesBody.add(leftThigh);
+        milesBody.add(rightThigh);
+        milesBody.add(leftUpperArm);
+        milesBody.add(rightUpperArm);
+        leftThigh.add(leftCalf);
+        rightThigh.add(rightCalf);
+        leftUpperArm.add(leftLowerArm);
+        rightUpperArm.add(rightLowerArm);
+        leftLowerArm.add(web1);
+        web1.add(web2);
+        web2.add(web3);
+        web3.add(web4);
+
+        //Position Relative to Parents
+        milesHead.position.y += bodyY;
+
+        leftLowerArm.position.y -= limbY;
+        rightLowerArm.position.y -= limbY;
+        leftCalf.position.y -= limbY;
+        rightCalf.position.y -= limbY;
+
+        leftThigh.position.x -= bodyX/4;
+        rightThigh.position.x += bodyX/4;
+        
+        leftUpperArm.position.y += bodyY;
+        leftUpperArm.position.x -= bodyX/1.5;
+
+        rightUpperArm.position.y += bodyY;
+        rightUpperArm.position.x += bodyX/1.5;
+
+        milesBody.position.y += (limbY * 2);
+        spiderman.position.set(-20,0,20);
+        spiderman.rotation.set(0,Math.PI/2,0);
+
+        return spiderman;
+    }
+    /* End of Miles' Body Functions */
+
+    /* Creating Web Functions */
+    function createWeb(radius, length, rotation){
+        var mat = new THREE.MeshBasicMaterial( { color: "white" } );
+        // CylinderGeometry(radiusTop, radiusBottom, height) 
+        var geom = new THREE.CylinderGeometry(radius, radius, length, 64, 64);
+        var mesh = new THREE.Mesh(geom, mat);
+        web = new THREE.Object3D();
+        
+        web.add(mesh);
+        web.position.y -= length/2;
+
+        return web
+    }
+    /* End of Miles' Body Functions */
+
+    /* Creating the environment */
+    //Creating the ground for NYC
+    function createGround(size) {
+        var geometry = new THREE.PlaneGeometry( size, size );
+        //var material = new THREE.MeshPhongMaterial({color: 0x3A3A3A, side: THREE.DoubleSide});
+        
+        var texture = texLoader.load("asphaltsmall.jpg");
+        texture.wrapS = THREE.RepeatWrapping;
+        texture.wrapT = THREE.RepeatWrapping;
+        texture.repeat.set(64, 64); // twice in U and three times in V
+        var material = new THREE.MeshPhongMaterial({ map: texture, side: THREE.DoubleSide}); 
+        
+        var plane = new THREE.Mesh( geometry, material );
+        plane.rotation.x = Math.PI/2; 
+        return plane;
+    }
+
+    //Create a building with a specific height (complete)
+    function createBuilding(base, height){
+        //(width, height, depth)
+        var geometry = new THREE.BoxGeometry(base,height,base);
+        //var material = new THREE.MeshPhongMaterial({color: 0x5A5A5A, side: THREE.DoubleSide});
+
+        
+        var texture = texLoader.load("building2.jpg");
+        texture.wrapS = THREE.RepeatWrapping;
+        texture.wrapT = THREE.RepeatWrapping;
+        texture.repeat.set(1, 4); // twice in U and three times in V
+        var material = new THREE.MeshPhongMaterial({ map: texture, side: THREE.DoubleSide}); 
+        
+
+        var building = new THREE.Mesh(geometry, material);
+        return building;
+    }
+
+    function genRandom2(min, max) {
+        range = max - min;
+        var r = Math.random(min, max); // returns a number in [0,1], scale it to ground coordinates
+        return min + (r * range);
+    }
+
+    //Creating the buildings on the ground (incomplete)
+    function createSkyline(){
+        /*
+        var b, h, x, z;
+        for(var i = 0; i < 10; i++){
+            for(var j = 0; j < 10; j++){
+                h = genRandom(75, 500);
+                b = 30;
+                building = createBuilding(b,h)
+                building.translate.x += i*b;
+                building.translate.z += j*b;
+                scene.add(building);
+            }
+        }
+        */
+        var a = -495;
+        var b = -495;
+
+        for (var i = 1; i <= 17; i++) {
+            for (var j = 1; j <= 34; j++) {
+                var buildingBaseRandom = genRandom2(15, 20);
+                var buildingHeightRandom = genRandom2(50, 175);
+                var buildingNew = createBuilding(buildingBaseRandom, buildingHeightRandom);
+                buildingNew.position.x = a;
+                buildingNew.position.z = b;
+                buildingNew.position.y += buildingHeightRandom/2;
+                //buildingNew.scale.x = genRandom2(0.75, 2);
+                //buildingNew.scale.y = genRandom2(0.75, 2);
+                //buildingNew.scale.z = genRandom2(0.75, 2);
+                //buildingNew.rotation.set(0, genRandom2(0, 100), 0);
+                scene.add(buildingNew);
+                a += 30;
+            }
+            a = -495;
+            b += 30;
+        }
+
+        var c = -495;
+        var d = 15;
+
+        for (var i = 1; i <= 17; i++) {
+            for (var j = 1; j <= 13; j++) {
+                if (i == 4 && j == 13) {
+                    var buildingManualBase = 25;
+                    var buildingManualHeight = 200;
+                    var buildingManual = createBuilding(buildingManualBase, buildingManualHeight);
+                    buildingManual.position.x = c;
+                    buildingManual.position.z = d;
+                    buildingManual.position.y = buildingManualHeight/2;
+                    scene.add(buildingManual);
+                    c += 30
+                } else {
+                    var buildingBaseRandom = genRandom2(15, 20);
+                    var buildingHeightRandom = genRandom2(50, 175);
+                    var buildingNew = createBuilding(buildingBaseRandom, buildingHeightRandom);
+                    buildingNew.position.x = c;
+                    buildingNew.position.z = d;
+                    buildingNew.position.y += buildingHeightRandom/2;
+                    //buildingNew.scale.x = genRandom2(0.75, 2);
+                    //buildingNew.scale.y = genRandom2(0.75, 2);
+                    //buildingNew.scale.z = genRandom2(0.75, 2);
+                    //buildingNew.rotation.set(0, genRandom2(0, 100), 0);
+                    scene.add(buildingNew);
+                    c += 30;
+                }
+            }
+            c = -495;
+            d += 30;
+        }
+
+        var e = 135;
+        var f = 15;
+
+        for (var i = 1; i <= 17; i++) {
+            for (var j = 1; j <= 13; j++) {
+                if (i == 4 && j == 1) {
+                    var buildingManualBase = 25;
+                    var buildingManualHeight = 200;
+                    var buildingManual = createBuilding(buildingManualBase, buildingManualHeight);
+                    buildingManual.position.x = e;
+                    buildingManual.position.z = f;
+                    buildingManual.position.y = buildingManualHeight/2;
+                    scene.add(buildingManual);
+                    e += 30;
+                    console.log("here");
+                } else {
+                    var buildingBaseRandom = genRandom2(15, 20);
+                    var buildingHeightRandom = genRandom2(50, 175);
+                    var buildingNew = createBuilding(buildingBaseRandom, buildingHeightRandom);
+                    buildingNew.position.x = e;
+                    buildingNew.position.z = f;
+                    buildingNew.position.y += buildingHeightRandom/2;
+                    //buildingNew.scale.x = genRandom2(0.75, 2);
+                    //buildingNew.scale.y = genRandom2(0.75, 2);
+                    //buildingNew.scale.z = genRandom2(0.75, 2);
+                    //buildingNew.rotation.set(0, genRandom2(0, 100), 0);
+                    scene.add(buildingNew);
+                    e += 30;
+                }
+            }
+            e = 135;
+            f += 30;
+        }
+
+    }
+
+    function genRandom(min, max) { //(complete)
+        //create a random value between these two values
+        range = max - min;
+        var r = Math.random()
+        return min + (range * r);
+    }
+
+    function createTrunk(radius, height) {
+
+        var geom = new THREE.CylinderGeometry(radius, radius, height, 64, 64);
+        //var mat = new THREE.MeshPhongMaterial({color: 0x573c08, side: THREE.DoubleSide});
+
+        
+        var texture = texLoader.load("treetrunk2.jpeg");
+        /*
+        texture.wrapS = THREE.RepeatWrapping;
+        texture.wrapT = THREE.RepeatWrapping;
+        texture.repeat.set(2, 2); // twice in U and three times in V
+        */
+        var mat = new THREE.MeshPhongMaterial({ map: texture, side: THREE.DoubleSide}); 
+        
+
+        var trunk = new THREE.Mesh( geom, mat);
+
+        return trunk;
+    }
+
+    function createTop(radius) {
+        var geom = new THREE.SphereGeometry(radius, 64, 32);
+        //var mat = new THREE.MeshPhongMaterial({color: 0x3d7340, side: THREE.DoubleSide});
+
+        
+        var texture = texLoader.load("treetop2.jpeg");
+        /*
+        texture.wrapS = THREE.RepeatWrapping;
+        texture.wrapT = THREE.RepeatWrapping;
+        texture.repeat.set(2, 2); // twice in U and three times in V
+        */
+        var mat = new THREE.MeshPhongMaterial({ map: texture, side: THREE.DoubleSide}); 
+        
+
+        var top = new THREE.Mesh( geom, mat );
+
+        return top;
+    }
+
+    function createTree() {
+        var trunkRadius = 3;
+        var trunkHeight = 20;
+        var topRadius = 8;
+
+        treeTrunk = createTrunk(trunkRadius, trunkHeight);
+        treeTop = createTop(topRadius);
+
+        var fullTree = new THREE.Object3D();
+        fullTree.add(treeTrunk);
+        treeTrunk.add(treeTop);
+
+        treeTrunk.position.y += trunkHeight/2
+        treeTop.position.y += trunkHeight - (topRadius/2);
+
+        return fullTree;
+    }
+
+    function createTreeWay() {
+        var g = -105;
+        var h = 15;
+
+        for (var i = 1; i <= 17; i++) {
+            var treeNew = createTree();
+            treeNew.position.x = g;
+            treeNew.position.z = h;
+            scene.add(treeNew);
+            h += 30;
+        }
+
+        var k = 105;
+        var l = 15;
+
+        for (var i = 1; i <= 17; i++) {
+            var treeNew2 = createTree();
+            treeNew2.position.x = k;
+            treeNew2.position.z = l;
+            scene.add(treeNew2);
+            l += 30;
+        }
+    }
+
+    /* End of Environment Functions*/
+
+    /*Keyframes and motion*/
+    //KeyFrame Interpolation function from hw7 to assist with Mile's Morales' movement
+    //[time, body.x rotate, body z pos, body.y pos, leftThigh.x, rightThigh.x, leftCalf.x, rightCalf.x, leftUpper.x, rightUpper.x, leftLower.x, rightLower.x, visible (0 or 1), camera]
+    milesKeyFrames = [[0, 0.24, -100, 200, -0.35,0,2.06,0,0,-0.07,0.55,0.69, 0, 0], //Pos 1: Holding on to the building
+                [0.083, -1.24, -95, 215,-0.21,-0.07,0.52,2.01,0.27,-0.33,-0.39,-0.63, 0, 0], //Pos 2: Leap off of the building into air
+                [0.166, -2.7, -92, 150,-0.21,-0.07,0.52,2.01,0.27,-0.07,-0.28,-0.13, 0, 0], //Pos 3: Continue Flip
+                [0.25, -3.12, -70,58,0,0,0,0,0,0,0.01,0, 0, 0], //Pos 4: Begin Dive
+                [0.333, -3.6, -50,40,0.29,-0.28,0.5,0.46,-1.11,0.17,-0.28,-0.23, 0, 0], //Pos 5: Let up the dive
+                [0.416, -4.92, -20,15,1.07,0.59,0.5,0.46,-2.87,0.17,-0.6,-0.23, 0, 0], //Pos 6: Shoot Webbing
+                [0.5,-5.84, 25,7,1.07,0.59,0.5,0.46,-2.87,0.17,-0.6,-0.23, 1, 0], //Pos 7: Gather Up Momentum (Midway)
+                [0.583, -6.63, 50, 35,-0.85,-1.24,0.11,0.32,-2.87,0.17,-0.24,-0.23, 0, 0], //Pos 8: Shoot legs out
+                [0.666, -8.16, 80, 45,-0.32,-1.48,1.01,0.76,0.51,-0.82,-0.22,-0.25, 0, 0], //Pos 9: Let go of web
+                [0.75, -9.62, 85, 50,0.96,-0.12,0.89,0.76,0.42,-0.38,-0.22,-0.25, 0,0], //Pos 10: Continue Backflip
+                [0.833, -10.77, 90,15,0.96,-0.12, 0.89,0.76,0.42,-0.65,-0.22,-0.25, 0, 0], //Pos 11: Finish Backflip
+                [0.916, -11.55, 95,10,0.41,-1.53,0.47,0.64,0.42,-1.37,-0.3,-0.25,0, 0], //Pos 12: Open into hero pose
+                [1,-12,100,6,0,0,0,0,0,0,0,0,0,1]] //Pos 13: Land in hero pose
+
+    function keyframeInterp(keyframes, cycleTime, animTime) {
+        var keys=[];  // array of interpolated values
+        var nKeys = keyframes[0].length-1;  // number of keys
+
+        // find time elapsed within the current cycle and scale to [0,1]
+        var time = (animTime % cycleTime) / cycleTime; 
+
+        // find the next keyframe based on time
+        for (var i = 0; i < keyframes.length; i++) {
+            if (time < keyframes[i][0]) break;
+        }
+        i = i-1; // previous keyframe is at index i-1
+
+        // scale interpolation parameter t to interval [0,1]
+        var t = (time - keyframes[i][0]) / (keyframes[i+1][0] - keyframes[i][0]); 
+
+        // linear interpolation between keyframes i and i+1 
+        for(var j = 1; j <= nKeys; j++)
+            keys.push((1-t) * keyframes[i][j] + t * keyframes[i+1][j]); 
+
+        return keys;
+    }
+
+    //Testing position of body for keyframes
+    function update() {
+        mouse.update();
+        keyboard.update();
+
+        //Left Arm Rotations
+        if (keyboard.pressed("W") ) {
+            leftUpperArm.rotation.x -= 0.01;
+        }
+        if (keyboard.pressed("S") ) {
+            leftUpperArm.rotation.x += 0.01;
+        }
+        if (keyboard.pressed("A") ) {
+            leftLowerArm.rotation.x -= 0.01;
+        }
+        if (keyboard.pressed("D") ) {
+            leftLowerArm.rotation.x += 0.01;
+        }
+
+        //Right Arm Rotations
+        if (keyboard.pressed("V") ) {
+            rightUpperArm.rotation.x -= 0.01;
+        }
+        if (keyboard.pressed("B") ) {
+            rightUpperArm.rotation.x += 0.01;
+        }
+        if (keyboard.pressed("N") ) {
+            rightLowerArm.rotation.x -= 0.01;
+        }
+        if (keyboard.pressed("M") ) {
+            rightLowerArm.rotation.x += 0.01;
+        }
+
+        //Left Leg Rotations
+        if (keyboard.pressed("T") ) {
+            leftThigh.rotation.x -= 0.01;
+        }
+        if (keyboard.pressed("G") ) {
+            leftThigh.rotation.x += 0.01;
+        }
+        if (keyboard.pressed("F") ) {
+            leftCalf.rotation.x -= 0.01;
+        }
+        if (keyboard.pressed("H") ) {
+            leftCalf.rotation.x += 0.01;
+        }
+
+        //Right Leg Rotations
+        if (keyboard.pressed("I") ) {
+            rightThigh.rotation.x -= 0.01;
+        }
+        if (keyboard.pressed("K") ) {
+            rightThigh.rotation.x += 0.01;
+        }
+        if (keyboard.pressed("J") ) {
+            rightCalf.rotation.x -= 0.01;
+        }
+        if (keyboard.pressed("L") ) {
+            rightCalf.rotation.x += 0.01;
+        }
+
+        //Body Roations
+        // if (keyboard.pressed("Z") ) {
+        //     milesBody.rotation.x -= 0.01;
+        // }
+        // if (keyboard.pressed("X") ) {
+        //     milesBody.rotation.x += 0.01;
+        // }
+        
+        //Body Movements
+        if (keyboard.pressed("Z") ) {
+            milesBody.position.z -= 0.5;
+        }
+        if (keyboard.pressed("X") ) {
+            milesBody.position.z += 0.5;
+        }
+
+
+        // Print keyframe parameters when user hits 'p'
+        if ( keyboard.down("P") ) {
+            console.log("Head Rotation: " + milesHead.rotation.x);
+            console.log("Body Rotation: " + milesBody.rotation.x);
+            console.log("Left Thigh Rotation: " + leftThigh.rotation.x);
+            console.log("Right Thigh Rotation: " + rightThigh.rotation.x);
+            console.log("Left Calf: " + leftCalf.rotation.x);
+            console.log("Right Calf: " + rightCalf.rotation.x);
+            console.log("Left Upper Arm Rotation: " + leftUpperArm.rotation.x);
+            console.log("Right Upper Arm Rotation: " + rightUpperArm.rotation.x);
+            console.log("Left Lower Arm: " + leftLowerArm.rotation.x);
+            console.log("Right Lower Arm: " + rightLowerArm.rotation.x);
+            console.log("Miles Body Position Z: " + spiderman.position.z);
+        }    
+        mouse.update();
+    }
+    /*End of KeyFrames and Motion*/
+
+    var fov = 510;
+    // Create a camera, sitting on the positive z-axis.  The camera is not part of the scene
+    function createCamera() {
+        camera = new THREE.PerspectiveCamera(40, canvas.width/canvas.height, 0.1, 5000);
+        //camera.position.set(0,3,40);
+        camera.position.set(0, 450, 400);
+
+        // Add orbit control to allow the camera orbit around
+        mouse = new THREE.OrbitControls(camera, renderer.domElement);
+
+    }
+
+   // add lights to the scene
+    function createLights()
+    {
+        var ambLight = new THREE.AmbientLight(0x404040);
+        scene.add(ambLight);
+
+        var eyeLight = new THREE.DirectionalLight("white", 0.8);
+        eyeLight.position.set(camera.position.x, camera.position.y, camera.position.z );
+        scene.add(eyeLight);
+
+        var topLight = new THREE.DirectionalLight( "white", 0.5 ); 
+        topLight.position.set(0, 2, 0);
+        scene.add(topLight);
+    }
+ 
+    // Create the scene. This function is called once, as soon as the page loads.
+    // The renderer has already been created before this function is called.
+    function createScene() {
+        
+        texLoader = new THREE.TextureLoader(); // used to load texture images
+
+        //renderer.setClearColor(0); // Set background color (0, or 0x000000, is black)
+        renderer.setClearColor(0xa5dbf2);
+        scene = new THREE.Scene(); // Create a new scene which we can add objects to
+
+        spiderman = createSpiderman();
+        scene.add(spiderman);
+        spiderman.position.z = 100;
+
+        ground = createGround(1020);
+        scene.add(ground);
+        camera.position.y += 5;
+        camera.position.z += 20;
+        
+        createSkyline()
+
+        //scene.add(gridHelper);
+
+        createTreeWay();
+
+        /*
+        tree = createTree();
+        scene.add(tree);
+        tree.position.z = 100;
+        */
+
+   }
+
+    // Render the scene. This is called for each frame of the animation.
+    var xStep = 0.25;
+    var yStep = -0.25;
+    var zStep = 0.25;
+    var zoom = false;
+    var count = 0;
+    function render() {
+        requestAnimationFrame( render );
+
+        //Animation
+        var spiderKeys = keyframeInterp(milesKeyFrames, 25, clock.getElapsedTime()-startTime);
+
+        milesBody.rotation.x = spiderKeys[0]; // Rotate Body X
+        milesBody.position.z = spiderKeys[1] // Body Z to move in space
+        milesBody.position.y = spiderKeys[2]; //Body Y
+        leftThigh.rotation.x = spiderKeys[3]; //Left Thigh
+        rightThigh.rotation.x = spiderKeys[4]; //Right Thigh
+        leftCalf.rotation.x = spiderKeys[5]; //Left Calf
+        rightCalf.rotation.x = spiderKeys[6]; //Right Calf
+        leftUpperArm.rotation.x = spiderKeys[7]; //Left Upper
+        rightUpperArm.rotation.x = spiderKeys[8]; //Right Upper
+        leftLowerArm.rotation.x = spiderKeys[9]; // Left Lower
+        rightLowerArm.rotation.x = spiderKeys[10]; // Right Lower
+
+        if(spiderKeys[11]){
+            web1.visible = true;
+            web2.visible = true;
+            web3.visible = true;
+            web4.visible = true;
+        }
+        else{
+            web1.visible = false;
+            web2.visible = false;
+            web3.visible = false;
+            web4.visible = false;
+        }
+
+        //Camera Movement
+        count += 1;
+
+        if(count >= 1200){
+            zoom = true;
+            zStep = 1.25;
+            yStep = 0.5;
+        }
+        
+        if(zoom){
+            camera.position.y = camera.position.y + yStep;
+            camera.position.z = camera.position.z + zStep;
+        }
+        else{
+            camera.position.y = camera.position.y + yStep;
+            camera.position.z = camera.position.z + zStep;
+            camera.lookAt(spiderman.position.x,spiderman.position.y,spiderman.position.z);
+        }
+
+        renderer.render(scene, camera);
+        update()
+    }
+
+    // reset canvas size and camera aspect ratio on window resize
+    function onWindowResize() {
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+    }
+    
+    // The init() function is called by the onload event when the document has loaded.
+    function main() {
+        try {
+            canvas = document.getElementById("glcanvas");
+            renderer = new THREE.WebGLRenderer( { canvas: canvas, antialias: true} );
+            // set full screen
+            renderer.setSize(window.innerWidth, window.innerHeight); 
+            // adjust on window resize
+            window.addEventListener('resize', onWindowResize);  
+        }
+        catch (e) {
+            document.getElementById("canvas-holder").innerHTML = "<h3><b>WebGL is not available.</b><h3>";
+            return;
+        }
+    
+        // create camera
+        createCamera();
+        
+        // create scene 
+        createScene();
+
+        // create lights 
+        createLights();
+
+        // render scene
+        render();
+    }
+
+</script>
+
+</head>
+<body onload="main()">
+<div id="canvas-holder">
+    <canvas id="glcanvas" width="400" height="200"></canvas>
+</div>
+</body>
+</html>
